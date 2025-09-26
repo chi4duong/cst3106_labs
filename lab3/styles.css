@@ -1,21 +1,47 @@
+body {
+    font-family: "Calibri", sans-serif;
+    margin: 40px;
+    background-color: #f9f9f9;
+    color: #333;
+}
+
 .p1 {
     font-weight: bold;
-    color: lightskyblue;  
+    color: lightskyblue;
     font-size: 20px;
-    font-family: "Calibri";
-    margin-bottom: 5px; 
-
+    margin-bottom: 5px;
 }
+
 .info {
-     margin: 3px 0;
-
+    margin: 3px 0;
 }
 
-h2{
-    font-size: 20px;
-
+h2 {
+    font-size: 22px;
+    margin-bottom: 10px;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 5px;
 }
 
-.section{
-    margin: 70px 0; 
+.section {
+    margin: 40px 0;
+}
+
+ul {
+    padding-left: 20px;
+}
+
+ul li {
+    margin-bottom: 8px;
+    line-height: 1.6;
+}
+
+a {
+    color: #007acc;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
 }
