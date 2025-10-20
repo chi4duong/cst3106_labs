@@ -36,7 +36,7 @@ export class DiceSet{
     /**@param {number} count number of dice in play (Yatzy = 5) */
     constructor(count = 5){
         this.count = Math.max(1, Math.trunc(count));
-        this.dice = Array.from({length: this.count }, () => new Die());\
+        this.dice = Array.from({length: this.count }, () => new Die());
       
         this.rollsThisTurn = 0; //track rolls per turn (Yatzy typically allows 3)
     }
