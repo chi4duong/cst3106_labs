@@ -1,13 +1,22 @@
-// app.js 
+// app.js — Yatzy Game with Server Dice Rolls (Lab 7)
+
+// ---------------------------------------------------------------------
+// Imports
+// ---------------------------------------------------------------------
 import YatzyGame from "./yatzyGame.js";
 import { CATEGORIES } from "./yatzyEngine.js";
 
+// ---------------------------------------------------------------------
+// Game Setup
+// ---------------------------------------------------------------------
 const game = new YatzyGame({ numPlayers: 1, numRounds: 13, rollsPerTurn: 3 });
 
-// --- DOM references 
+// ---------------------------------------------------------------------
+// DOM References
+// ---------------------------------------------------------------------
 const diceEls  = Array.from(document.querySelectorAll(".dice-tray .die"));
 const rollBtn  = document.querySelector(".controls .btn--primary");
-const resetBtn = document.querySelector(".controls .btn--ghost");   
+const resetBtn = document.querySelector(".controls .btn--ghost");
 const scoreBtn = document.querySelector(".controls .btn--accent");
 
 // Score rows
@@ -19,7 +28,7 @@ rows.forEach(tr => {
 });
 const NON_SELECTABLE = new Set(["Upper Bonus", "Total"]);
 
-// Enable buttons that mockup disabled
+// Enable interactive buttons
 [rollBtn, resetBtn, scoreBtn].forEach(b => {
   if (!b) return;
   b.removeAttribute("disabled");
@@ -29,13 +38,15 @@ const NON_SELECTABLE = new Set(["Upper Bonus", "Total"]);
 
 if (resetBtn) resetBtn.textContent = "Clear Holds";
 
-// Add a status line inside the controls (shows round/rolls/messages)
+// Status line
 const controls = document.querySelector(".controls");
 const statusEl = document.createElement("div");
 statusEl.className = "hint";
 controls?.appendChild(statusEl);
 
-// --- Helpers
+// ---------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------
 function setDieFace(el, value) {
   [...el.classList].forEach(c => { if (c.startsWith("face-")) el.classList.remove(c); });
   el.classList.add(`face-${value}`);
@@ -43,7 +54,7 @@ function setDieFace(el, value) {
 
 function refreshDice() {
   const values = game.diceValues;
-  const held   = game.dice.heldFlags ? game.dice.heldFlags() : game.dice.dice.map(d => d.held);
+  const held = game.dice.heldFlags ? game.dice.heldFlags() : game.dice.dice.map(d => d.held);
   diceEls.forEach((el, i) => {
     const v = values[i] ?? 1;
     setDieFace(el, v);
@@ -55,10 +66,8 @@ function refreshDice() {
 }
 
 function updateComputedCells() {
-  // Upper Bonus
   const bonusRow = rowByCat.get("Upper Bonus");
   if (bonusRow) bonusRow.querySelector(".pts").textContent = String(game.currentPlayer.engine.upperBonus());
-  // Total
   const totalRow = rowByCat.get("Total");
   if (totalRow) totalRow.querySelector(".pts").textContent = String(game.currentPlayer.engine.total());
 }
@@ -92,15 +101,33 @@ function updateStatus(message = "") {
   statusEl.textContent = `Round ${round}/${game.numRounds} · Rolls ${rolls}/${game.rollsPerTurn}` + (message ? ` — ${message}` : "");
 }
 
+// ---------------------------------------------------------------------
+// Server Helper — fetch dice values from Express server
+// ---------------------------------------------------------------------
+async function fetchServerRoll(count = 5) {
+  const res = await fetch(`/roll-dices?count=${encodeURIComponent(count)}`, {
+    headers: { "Accept": "application/json" }
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (!Array.isArray(data.values)) throw new Error("Invalid /roll-dices payload");
+  return data.values.slice(0, count);
+}
+
+// ---------------------------------------------------------------------
+// End-of-game alert
+// ---------------------------------------------------------------------
 function maybeShowGameOver() {
   if (!game.isGameOver) return;
   const w = game.winner ?? { name: game.currentPlayer.name, total: game.currentPlayer.totalScore() };
   alert(`Game Over!\nWinner: ${w.name}\nFinal Score: ${w.total}`);
 }
 
-// --- Interactions
+// ---------------------------------------------------------------------
+// Interactions
+// ---------------------------------------------------------------------
 
-// Click a die to toggle hold (always allowed)
+// Toggle hold on click
 diceEls.forEach((el, i) => {
   el.style.cursor = "pointer";
   el.dataset.index = String(i);
@@ -112,38 +139,65 @@ diceEls.forEach((el, i) => {
   });
 });
 
-// Roll (max 3 times per turn)
-rollBtn?.addEventListener("click", () => {
-  game.roll();
-  refreshDice();
-  updateRollButtonState();
-  const atLimit = game.dice.rollsThisTurn >= game.rollsPerTurn;
-  updateStatus(atLimit ? "Select a category to score." : "Click dice to hold and roll again.");
+// Roll (max 3 times per turn) — via server, fallback to local RNG
+rollBtn?.addEventListener("click", async () => {
+  if (game.dice.rollsThisTurn >= game.rollsPerTurn) {
+    updateStatus("Roll limit reached. Select a category to score.");
+    updateRollButtonState();
+    return;
+  }
+
+  // Disable UI during server call
+  rollBtn.disabled = true;
+  rollBtn.setAttribute("aria-disabled", "true");
+
+  try {
+    const serverValues = await fetchServerRoll(5);
+    const dice = game.dice.dice;
+    for (let i = 0; i < dice.length; i++) {
+      if (!dice[i].held) {
+        const val = Number.isFinite(serverValues[i]) ? serverValues[i] : (1 + Math.floor(Math.random() * 6));
+        dice[i].setValue(val);
+      }
+    }
+    game.dice.rollsThisTurn++;
+  } catch (err) {
+    console.error("Server roll failed, using local RNG:", err);
+    game.roll(); // fallback
+  } finally {
+    refreshDice();
+    updateRollButtonState();
+    const atLimit = game.dice.rollsThisTurn >= game.rollsPerTurn;
+    updateStatus(atLimit ? "Select a category to score." : "Click dice to hold and roll again.");
+
+    // Re-enable roll if not at limit
+    if (!atLimit) {
+      rollBtn.disabled = false;
+      rollBtn.removeAttribute("aria-disabled");
+    }
+  }
 });
 
-// Clear Holds (does NOT reset rolls)
+// Clear Holds
 resetBtn?.addEventListener("click", () => {
   game.dice.dice.forEach(d => (d.held = false));
   refreshDice();
   updateStatus("Holds cleared.");
 });
 
-// Click a scorecard row to score that category
+// Click score row to score category
 function onScoreRowClick(e) {
   const tr = e.currentTarget;
   const cat = tr.children?.[0]?.textContent?.trim();
   if (!cat || NON_SELECTABLE.has(cat)) return;
 
-  // Apply score for current dice
   const pts = game.scoreSelection(cat);
-  // Paint row used
   const ptsCell = tr.querySelector(".pts");
   if (ptsCell) ptsCell.textContent = String(pts);
   tr.classList.add("used");
   tr.style.opacity = "0.7";
   tr.style.pointerEvents = "none";
 
-  // End turn and advance round
   game.endTurn();
   refreshScorecardFull();
 
@@ -153,9 +207,9 @@ function onScoreRowClick(e) {
     return;
   }
 
-  // Prepare next turn state
-  game.dice.resetTurn?.();           // clears holds & rollsThisTurn if your DiceSet has it
-  game.dice.rollsThisTurn = 0;       
+  // New turn reset
+  game.dice.resetTurn?.();
+  game.dice.rollsThisTurn = 0;
   game.dice.dice.forEach(d => (d.held = false));
 
   refreshDice();
@@ -163,13 +217,11 @@ function onScoreRowClick(e) {
   updateStatus("New turn: click Roll to start.");
 }
 
-
 Object.values(CATEGORIES).forEach(cat => {
   const tr = rowByCat.get(cat);
   if (!tr) return;
   tr.addEventListener("click", onScoreRowClick);
 });
-
 
 scoreBtn?.addEventListener("click", () => {
   const choices = Object.values(CATEGORIES);
@@ -180,7 +232,9 @@ scoreBtn?.addEventListener("click", () => {
   else alert("That category is already used or invalid.");
 });
 
-// Boot
+// ---------------------------------------------------------------------
+// Boot Game
+// ---------------------------------------------------------------------
 game.startNewGame();
 refreshDice();
 refreshScorecardFull();

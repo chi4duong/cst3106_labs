@@ -60,6 +60,28 @@ export class DiceSet{
     setValues(vals){
         vals.slice(0, this.count).forEach((v, i) => this.dice[i].setValue(v));
     }
+
+    //expose held mask to the UI/controller
+  heldFlags() {
+    return this.dice.map(d => !!d.held);
+  }
+
+  // merge server-provided values into ONLY unheld dice
+  // serverValues: number[] (length >= this.count is ideal, but we guard)
+  applyServerRoll(serverValues) {
+    const src = Array.isArray(serverValues) ? serverValues : [];
+    for (let i = 0; i < this.count; i++) {
+      if (!this.dice[i].held) {
+        const v = Number.isFinite(src[i]) ? src[i] : (1 + Math.floor(Math.random() * 6));
+        this.dice[i].setValue(v);
+      }
+    }
+    this.rollsThisTurn++;
+    return this.values();
+  }
+
+
+
 }
 
 export default DiceSet; 
